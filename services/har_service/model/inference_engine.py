@@ -1,9 +1,12 @@
+"""ONNX inference engine for the bundled 7-activity HAR model."""
+
 import numpy as np
 from onnxruntime import SessionOptions, InferenceSession, ExecutionMode, GraphOptimizationLevel
 from typing import Callable, List
 
 
 def softmax(x, alpha=0.3):
+    """Convert model scores to display probabilities with temperature scaling."""
     x = np.asarray(x, dtype=np.float32)
     z = alpha * x
     z = z - np.max(z)
@@ -12,6 +15,8 @@ def softmax(x, alpha=0.3):
 
 
 class InferenceEngine:
+    """Prepare model tensors, run ONNX Runtime, and format predictions."""
+
     def __init__(
         self,
         model_path,
@@ -38,10 +43,12 @@ class InferenceEngine:
         self.score_aggregation = score_aggregation
 
     def _debug_print(self, *parts) -> None:
+        """Print debug output only when debug mode is enabled."""
         if self.debug:
             print(*parts)
 
     def _resolve_output_classes(self) -> int | None:
+        """Infer the number of model classes from output metadata if possible."""
         if self.session is None:
             raise RuntimeError("Inference session is not initialized")
 
@@ -52,12 +59,14 @@ class InferenceEngine:
         return None
 
     def _resolve_expected_input_shape(self) -> list[int | str | None]:
+        """Read the ONNX input shape used for runtime validation."""
         if self.session is None:
             raise RuntimeError("Inference session is not initialized")
 
         return list(self.session.get_inputs()[0].shape)
 
     def _validate_input_tensor_shape(self, model_input: np.ndarray) -> None:
+        """Fail early when the prepared tensor does not match model metadata."""
         expected_shape = self._resolve_expected_input_shape()
         actual_shape = list(model_input.shape)
 
@@ -83,6 +92,7 @@ class InferenceEngine:
             )
 
     def _build_input_tensor(self, accelerometer, gyroscope) -> np.ndarray:
+        """Convert axis arrays into the model's `[time, batch, channel]` tensor."""
         acc = [
             accelerometer["x"],
             accelerometer["y"],
@@ -126,6 +136,7 @@ class InferenceEngine:
         return np.expand_dims(processed.swapaxes(1, 0), 1).astype(np.float32)
 
     def _aggregate_scores(self, scores: np.ndarray) -> np.ndarray:
+        """Reduce sequence-level model scores to one score per activity class."""
         if self.score_aggregation == "sum":
             if scores.ndim == 3:
                 return np.sum(scores, axis=(0, 1))
@@ -154,6 +165,7 @@ class InferenceEngine:
         )
 
     def initialize(self):
+        """Create the ONNX Runtime session and validate label compatibility."""
         session_options = SessionOptions()
         session_options.execution_mode = ExecutionMode.ORT_SEQUENTIAL
         session_options.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -162,7 +174,8 @@ class InferenceEngine:
         session_options.enable_mem_pattern = True
         session_options.enable_cpu_mem_arena = False
         session_options.enable_mem_reuse = True
-        # Load the model
+        # Use deterministic CPU settings because this service runs in small
+        # containers and should produce repeatable validation results.
         self.session = InferenceSession(self.model_path, sess_options=session_options)
         output_classes = self._resolve_output_classes()
         input_shape = self._resolve_expected_input_shape()
@@ -181,6 +194,7 @@ class InferenceEngine:
         self._debug_print("score aggregation:", self.score_aggregation)
 
     def execute_inference(self, accelerometer, gyroscope):
+        """Run one inference call and return prediction details."""
         if self.session is None:
             raise RuntimeError("Inference session is not initialized")
 
@@ -247,4 +261,5 @@ class InferenceEngine:
         return result
 
     def default_callback(self, activity):
+        """Default callback used by legacy callers that expect print output."""
         print(activity)

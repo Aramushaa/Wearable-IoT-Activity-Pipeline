@@ -1,3 +1,5 @@
+"""HAR service entrypoint for database polling and live MQTT inference."""
+
 from __future__ import annotations
 
 import logging
@@ -25,10 +27,12 @@ last_written_window_end_ts: dict[tuple[str, str], float] = {}
 
 
 def sql_quote_literal(value: str) -> str:
+    """Quote a SQL literal for the limited service-generated queries here."""
     return "'" + str(value).replace("'", "''") + "'"
 
 
 def build_allowed_activity_clause() -> str | None:
+    """Build an optional WHERE predicate for configured activity codes."""
     if not settings.allowed_activity_codes:
         return None
 
@@ -40,6 +44,7 @@ def build_allowed_activity_clause() -> str | None:
 
 
 def fetch_matching_streams() -> list[dict]:
+    """Find device/recording streams that currently have IMU data."""
     where_clauses = []
 
     if settings.filter_device:
@@ -78,6 +83,7 @@ def fetch_ordered_imu_rows(
     recording_id: str,
     limit: int,
 ) -> list[dict]:
+    """Fetch rows for one stream in the order used to build HAR windows."""
     where_clauses = [
         f"device = {sql_quote_literal(device)}",
         f"recording_id = {sql_quote_literal(recording_id)}",
@@ -117,6 +123,7 @@ def log_window_summary(
     recording_id: str,
     windows: list[list[dict]],
 ) -> None:
+    """Log enough detail to verify window coverage without dumping samples."""
     if not windows:
         logger.info(
             "No complete windows | device=%s | recording_id=%s",
@@ -146,6 +153,7 @@ def evaluate_windows_for_stream(
     inference,
     max_windows: int,
 ) -> None:
+    """Run inference for new windows and persist prediction points."""
     if not windows:
         logger.info(
             "No windows to evaluate | device=%s | recording_id=%s",
@@ -176,6 +184,8 @@ def evaluate_windows_for_stream(
     for idx, window in enumerate(windows_to_check):
         window_end_ts = float(window[-1]["dataset_ts"])
 
+        # The polling loop may see the same rows repeatedly; this guard prevents
+        # duplicate prediction points for a stream.
         if window_end_ts <= last_written_window_end_ts.get((device, recording_id), float("-inf")):
             logger.debug(
                 "Skipping already written prediction | device=%s | recording_id=%s | window_idx=%s | end_dataset_ts=%s",
@@ -227,6 +237,7 @@ def evaluate_windows_for_stream(
 
 
 def main() -> None:
+    """Initialize inference and run the configured HAR input mode."""
     logger.info("Starting %s", settings.service_name)
     logger.info(
         "Configuration | input_mode=%s | influx_database=%s | imu_table=%s | prediction_table=%s | query_limit=%s | window_size=%s | window_stride=%s | mqtt_topic=%s | prediction_topic=%s | model_path=%s | labels_path=%s",

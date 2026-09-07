@@ -1,5 +1,6 @@
 apiVersion: 1
 
+# SQL datasource for InfluxDB 3. The token is injected from docker-compose.yml.
 datasources:
   - name: InfluxDB3-Tennis
     uid: influxdb3_tennis

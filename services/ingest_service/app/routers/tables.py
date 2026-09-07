@@ -1,3 +1,5 @@
+"""Expose configured InfluxDB table names to clients and dashboards."""
+
 from fastapi import APIRouter
 
 from ..config import (
@@ -14,6 +16,7 @@ router = APIRouter(tags=["tables"])
 
 @router.get("/tables")
 def get_tables():
+    """Return the database and measurement names currently in use."""
     return {
         "database": INFLUX_DATABASE,
         "tables": {

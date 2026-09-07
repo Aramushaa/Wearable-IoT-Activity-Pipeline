@@ -1,3 +1,5 @@
+"""Run the local MetaWear BLE bridge and publish raw sensor samples to MQTT."""
+
 import signal
 import time
 from datetime import datetime, timezone
@@ -17,6 +19,7 @@ if not MAC_ADDRESS or MAC_ADDRESS == "YOUR_MAC_ADDRESS_HERE":
 
 publisher = MQTTPublisher()
 recording_started_at = time.time()
+# The bridge publishes raw per-sensor samples; pairing happens in the cleaner.
 raw_sample_idx = {"acc": 0, "gyro": 0}
 
 # Debug counters: print rate once per second instead of printing every sample.
@@ -25,6 +28,7 @@ last_rate_print = time.time()
 
 
 def now_iso() -> str:
+    """Return a compact UTC timestamp with a trailing Z."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -77,6 +81,7 @@ sensor.set_callback(my_function)
 
 # Register SIGINT / SIGTERM so we always disconnect the BLE device cleanly.
 def _shutdown_handler(signum, frame):
+    """Ask the sampling loop to stop before process termination."""
     sensor.stop_sampling()
 
 signal.signal(signal.SIGINT, _shutdown_handler)

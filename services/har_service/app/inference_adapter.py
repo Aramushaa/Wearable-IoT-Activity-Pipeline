@@ -1,3 +1,5 @@
+"""Adapter between HAR service code and the bundled ONNX inference engine."""
+
 from __future__ import annotations
 
 import ast
@@ -7,10 +9,12 @@ from model.inference_engine import InferenceEngine
 
 
 def _clean_label(value: str) -> str:
+    """Normalize one label token from the flexible labels file format."""
     return value.strip().strip(",").strip().strip("[](){}").strip("\"'")
 
 
 def load_activity_labels(labels_path: str) -> list[str]:
+    """Load labels from Python-list, comma-separated, or one-per-line formats."""
     path = Path(labels_path)
     if not path.exists():
         raise FileNotFoundError(f"Labels file not found: {labels_path}")
@@ -84,9 +88,11 @@ class HarInferenceAdapter:
         self.engine.initialize()
 
     def _capture_prediction(self, activity: str) -> None:
+        """Capture the callback emitted by the bundled inference engine."""
         self.last_prediction = activity
 
     def predict_details(self, model_input: dict) -> dict:
+        """Run inference and verify callback output matches returned details."""
         self.last_prediction = None
 
         result = self.engine.execute_inference(
@@ -106,4 +112,5 @@ class HarInferenceAdapter:
         return result
 
     def predict(self, model_input: dict) -> str:
+        """Return only the predicted activity label for callers that need it."""
         return self.predict_details(model_input)["predicted_label"]

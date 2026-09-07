@@ -1,3 +1,4 @@
+# HAR runtime dependencies: settings, ONNX inference, numeric arrays, and MQTT.
 pydantic-settings==2.7.1
 onnxruntime==1.18.1
 numpy==1.26.4

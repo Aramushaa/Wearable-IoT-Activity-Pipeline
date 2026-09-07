@@ -1,3 +1,5 @@
+"""InfluxDB helpers used by the HAR service."""
+
 from __future__ import annotations
 
 import json
@@ -11,14 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 def escape_tag_value(value: str) -> str:
+    """Escape an InfluxDB line-protocol tag value."""
     return str(value).replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
 
 
 def escape_string_field(value: str) -> str:
+    """Escape an InfluxDB line-protocol string field."""
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
 def write_line_protocol(line: str) -> None:
+    """Write one line-protocol point to the configured InfluxDB database."""
     params = urlencode({"db": settings.influx_database, "precision": "ns"})
     url = f"{settings.influx_host}/api/v3/write_lp?{params}"
 
@@ -48,6 +53,7 @@ def write_line_protocol(line: str) -> None:
 
 
 def query_influx_sql(sql: str) -> list[dict]:
+    """Run a SQL query against InfluxDB 3 and return decoded rows."""
     if not settings.influx_token:
         raise RuntimeError("HAR_INFLUX_TOKEN is empty")
 

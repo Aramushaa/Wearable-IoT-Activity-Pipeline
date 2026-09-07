@@ -1,3 +1,5 @@
+"""Schema inspection endpoints for configured InfluxDB tables."""
+
 from fastapi import APIRouter
 
 from ..config import (
@@ -13,6 +15,7 @@ router = APIRouter(tags=["schema"])
 
 
 def _safe_query(sql: str) -> list[dict] | None:
+    """Return None instead of failing the whole schema response."""
     try:
         return query_influx_sql(sql)
     except Exception:
@@ -52,4 +55,5 @@ def get_schema():
 
 @router.get("/events/schema")
 def get_events_schema_legacy():
+    """Compatibility alias for older clients that queried `/events/schema`."""
     return get_schema()

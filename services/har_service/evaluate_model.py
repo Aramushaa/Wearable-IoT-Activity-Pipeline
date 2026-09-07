@@ -4,7 +4,7 @@ Comprehensive evaluation script for the HAR model.
 This script:
   1. Queries InfluxDB for data across ALL 18 activity types
   2. Builds sliding windows and runs inference for each
-  3. Prints a detailed report: ground truth → predicted label, with confidence
+  3. Prints a detailed report: ground truth -> predicted label, with confidence
   4. Produces a confusion-style summary
 
 Run inside Docker:
@@ -85,7 +85,7 @@ ACTIVITY_MAP = {
     "L": "Eating Sandwich",
 }
 
-# Expected mapping: professor label → dataset code
+# Expected mapping from model label to Siddha dataset activity code.
 EXPECTED_MAPPING = {
     "dribbling": "P",    # Dribbling (Basketball)
     "catch": "O",        # Playing Catch (Tennis)
@@ -102,6 +102,7 @@ EXPECTED_MAPPING = {
 # ---------------------------------------------------------------------------
 
 def query_influx(sql: str) -> list[dict]:
+    """Run one InfluxDB SQL query for the evaluation script."""
     if not INFLUX_TOKEN:
         print("ERROR: No InfluxDB token found. Set HAR_INFLUX_TOKEN or INFLUX_TOKEN env var.")
         sys.exit(1)
@@ -126,6 +127,7 @@ def query_influx(sql: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def build_windows(rows: list[dict]) -> list[list[dict]]:
+    """Build fixed-size windows with the configured stride."""
     windows = []
     if len(rows) < WINDOW_SIZE:
         return windows
@@ -135,6 +137,7 @@ def build_windows(rows: list[dict]) -> list[list[dict]]:
 
 
 def window_to_arrays(window: list[dict]) -> tuple[dict, dict]:
+    """Convert one IMU window into accelerometer and gyroscope axis arrays."""
     acc = {
         "x": [float(r["acc_x"]) for r in window],
         "y": [float(r["acc_y"]) for r in window],
@@ -153,6 +156,7 @@ def window_to_arrays(window: list[dict]) -> tuple[dict, dict]:
 # ---------------------------------------------------------------------------
 
 def softmax(x, alpha=0.3):
+    """Convert raw class scores to display probabilities."""
     x = np.asarray(x, dtype=np.float32)
     z = alpha * x
     z = z - np.max(z)
@@ -161,6 +165,8 @@ def softmax(x, alpha=0.3):
 
 
 class SimpleInference:
+    """Minimal inference wrapper for offline evaluation reports."""
+
     def __init__(self, model_path: str, labels: list[str]):
         from onnxruntime import InferenceSession, SessionOptions, ExecutionMode, GraphOptimizationLevel
 
@@ -173,6 +179,7 @@ class SimpleInference:
         self.output_shape = self.session.get_outputs()[0].shape
 
     def _build_input_tensor(self, acc: dict, gyro: dict) -> np.ndarray:
+        """Build the ONNX input tensor using the configured layout options."""
         accel = [acc["x"], acc["y"], acc["z"]]
         gyroscope = [gyro["x"], gyro["y"], gyro["z"]]
 
@@ -208,6 +215,7 @@ class SimpleInference:
         return np.expand_dims(processed.swapaxes(1, 0), 1).astype(np.float32)
 
     def _aggregate_scores(self, scores: np.ndarray) -> np.ndarray:
+        """Reduce model output scores to one score per class."""
         if SCORE_AGGREGATION == "sum":
             if scores.ndim == 3:
                 return np.sum(scores, axis=(0, 1))
@@ -236,6 +244,7 @@ class SimpleInference:
         )
 
     def predict(self, acc: dict, gyro: dict) -> dict:
+        """Run inference for one window and return prediction details."""
         model_input = self._build_input_tensor(acc, gyro)
 
         output = self.session.run(None, {self.input_name: model_input})
@@ -377,6 +386,7 @@ def select_windows_round_robin(
 
 
 def main():
+    """Evaluate the model against activities currently stored in InfluxDB."""
     model_labels = load_activity_labels(LABELS_PATH)
     mapped_labels = {label: EXPECTED_MAPPING[label] for label in model_labels if label in EXPECTED_MAPPING}
     unmapped_labels = [label for label in model_labels if label not in EXPECTED_MAPPING]

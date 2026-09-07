@@ -1,3 +1,11 @@
+"""Reset the Phase 6 biosignal tables in InfluxDB 3.
+
+This script is intentionally dependency-light so it can run from a local shell
+without installing the service packages. It reads the project `.env`, validates
+the configured table names, and deletes the EEG/ECG tables used by Phase 6
+dataset replays.
+"""
+
 import os
 import re
 from pathlib import Path
@@ -11,6 +19,7 @@ TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def load_env_file(path: Path = ENV_PATH) -> None:
+    """Load simple KEY=VALUE pairs from `.env` without overriding the shell."""
     if not path.exists():
         return
 
@@ -42,6 +51,7 @@ def load_env_file(path: Path = ENV_PATH) -> None:
 
 
 def require_env(name: str) -> str:
+    """Return a required environment value or fail with an actionable message."""
     value = os.getenv(name, "").strip()
     if not value:
         raise RuntimeError(f"{name} is empty. Set it in .env or your terminal.")
@@ -49,6 +59,7 @@ def require_env(name: str) -> str:
 
 
 def table_name_from_env(name: str, default: str) -> str:
+    """Read and validate a table name before placing it in a request URL."""
     table_name = os.getenv(name, default).strip()
     if not TABLE_NAME_RE.fullmatch(table_name):
         raise RuntimeError(f"{name} has an invalid table name: {table_name!r}")
@@ -56,10 +67,12 @@ def table_name_from_env(name: str, default: str) -> str:
 
 
 def host_for_local_run(host: str) -> str:
+    """Map Docker service hostnames to localhost for direct local execution."""
     return host.replace("://influxdb3:", "://localhost:")
 
 
 def delete_table(host: str, token: str, database: str, table: str) -> None:
+    """Delete one InfluxDB table through the v3 configure API."""
     params = urlencode({"db": database, "table": table})
     url = f"{host}/api/v3/configure/table?{params}"
 
@@ -84,6 +97,7 @@ def delete_table(host: str, token: str, database: str, table: str) -> None:
 
 
 def main() -> None:
+    """Load configuration and reset the configured Phase 6 tables."""
     load_env_file()
 
     influx_host = host_for_local_run(os.getenv("INFLUX_HOST", "http://localhost:8181"))

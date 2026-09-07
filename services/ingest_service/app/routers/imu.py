@@ -1,3 +1,5 @@
+"""Legacy IMU query endpoint kept for Phase 3 compatibility."""
+
 from typing import Optional
 
 from fastapi import APIRouter, Query

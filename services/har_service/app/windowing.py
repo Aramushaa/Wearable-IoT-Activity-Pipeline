@@ -1,3 +1,5 @@
+"""Window-building utilities shared by HAR polling and live modes."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -5,6 +7,7 @@ from typing import DefaultDict, Iterable
 
 
 def group_rows_by_device_and_recording(rows: Iterable[dict]) -> dict[tuple[str, str], list[dict]]:
+    """Group IMU rows by their stream identity."""
     groups: DefaultDict[tuple[str, str], list[dict]] = defaultdict(list)
 
     for row in rows:
@@ -20,6 +23,7 @@ def build_sliding_windows(
     window_size: int,
     stride: int,
 ) -> list[list[dict]]:
+    """Build fixed-size sliding windows from ordered IMU rows."""
     if window_size <= 0:
         raise ValueError("window_size must be > 0")
     if stride <= 0:
@@ -38,6 +42,7 @@ def build_sliding_windows(
 
 
 def window_to_model_input(window: list[dict]) -> dict:
+    """Convert a clean IMU window into the model input structure."""
     if not window:
         raise ValueError("window cannot be empty")
 

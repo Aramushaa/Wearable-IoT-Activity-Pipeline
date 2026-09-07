@@ -1,0 +1,11 @@
+const fs=require('node:fs'),path=require('node:path');
+const root=path.resolve(__dirname,'..');
+const assets=path.join(root,'android/app/src/main/assets');
+fs.mkdirSync(assets,{recursive:true});
+const files=['index.html','style.css','game.js','empires.js','audio.js','ads.js','privacy.html'];
+for(const name of files)fs.copyFileSync(path.join(root,name),path.join(assets,name));
+fs.cpSync(path.join(root,'fonts'),path.join(assets,'fonts'),{recursive:true});
+let html=fs.readFileSync(path.join(assets,'index.html'),'utf8');
+html=html.replace('<meta charset="utf-8">','<meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src \'self\'; connect-src \'none\'; frame-src \'none\'; object-src \'none\'; base-uri \'self\'; form-action \'none\'">');
+fs.writeFileSync(path.join(assets,'index.html'),html);
+console.log('Packaged game, ads bridge, privacy policy and fonts for offline Android use.');

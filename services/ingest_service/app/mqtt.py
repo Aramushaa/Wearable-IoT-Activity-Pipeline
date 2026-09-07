@@ -1,4 +1,8 @@
-# mqtt worker + callbacks
+"""MQTT subscriber for the ingest service.
+
+The subscriber keeps a small in-memory event buffer for debug endpoints and
+routes recognized payloads into the asynchronous InfluxDB writer.
+"""
 
 import json
 import threading
@@ -25,6 +29,8 @@ from .influx import (
 )
 
 
+# Recent events are stored for `/events?source=memory` so diagnostics still work
+# when InfluxDB is disabled or temporarily unavailable.
 EVENTS: Deque[Dict[str, Any]] = deque(maxlen=EVENT_BUFFER_MAX)
 EVENTS_LOCK = threading.Lock()
 
@@ -35,6 +41,7 @@ mqtt_thread: Optional[threading.Thread] = None
 
 
 def normalize_event(topic: str, payload_obj: Any) -> Dict[str, Any]:
+    """Wrap a decoded MQTT payload in the generic event envelope."""
     ts = payload_obj.get("ts") if isinstance(payload_obj, dict) else None
     return {
         "ts": ts or now_iso(),
@@ -45,6 +52,7 @@ def normalize_event(topic: str, payload_obj: Any) -> Dict[str, Any]:
 
 
 def on_connect(client, userdata, flags, rc, properties=None):
+    """Subscribe to every configured topic after the broker connection opens."""
     print("[MQTT] connected rc=", rc)
     for t in SUB_TOPICS:
         client.subscribe(t, qos=1)
@@ -68,6 +76,8 @@ def _enqueue_influx_writes(ev: Dict[str, Any], payload_obj: Any) -> None:
 
         device = payload_obj.get("device")
         required_imu_fields = {"acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z"}
+        # Device-specific writers keep biosignals and IMU rows queryable instead
+        # of storing everything only as opaque JSON in the generic events table.
         if device == "eeg":
             write_eeg_to_influx(payload_obj)
         elif device == "ecg":
@@ -79,6 +89,7 @@ def _enqueue_influx_writes(ev: Dict[str, Any], payload_obj: Any) -> None:
 
 
 def on_message(client, userdata, msg):
+    """Decode an MQTT message, save it for diagnostics, and enqueue DB writes."""
     try:
         raw = msg.payload.decode("utf-8", errors="replace")
     except Exception as e:
@@ -99,6 +110,7 @@ def on_message(client, userdata, msg):
         _enqueue_influx_writes(ev, payload_obj)
 
 def mqtt_worker():
+    """Own the reconnect loop for the process-wide MQTT client."""
     mqtt_client.on_connect = on_connect
     mqtt_client.on_message = on_message
 
@@ -113,12 +125,14 @@ def mqtt_worker():
 
 
 def start_mqtt_thread():
+    """Start the MQTT loop in a daemon thread so FastAPI can serve requests."""
     global mqtt_thread
     mqtt_thread = threading.Thread(target=mqtt_worker, daemon=True)
     mqtt_thread.start()
 
 
 def stop_mqtt():
+    """Disconnect the MQTT client during application shutdown."""
     try:
         mqtt_client.disconnect()
     except Exception:
@@ -126,5 +140,6 @@ def stop_mqtt():
 
 
 def get_memory_events(limit: int) -> list[dict]:
+    """Return the newest in-memory events without exposing the mutable deque."""
     with EVENTS_LOCK:
         return list(EVENTS)[-limit:]

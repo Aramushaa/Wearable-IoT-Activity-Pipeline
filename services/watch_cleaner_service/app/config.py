@@ -1,8 +1,12 @@
+"""Configuration for the MetaWear watch cleaner service."""
+
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# These settings use CLEANER_* first, then the generic MQTT_* values, so the
+# cleaner can run either as part of Docker Compose or as a standalone process.
 MQTT_HOST = os.getenv("CLEANER_MQTT_HOST", os.getenv("MQTT_HOST", "emqx"))
 MQTT_PORT = int(os.getenv("CLEANER_MQTT_PORT", os.getenv("MQTT_PORT", "1883")))
 MQTT_CLIENT_ID = os.getenv("CLEANER_MQTT_CLIENT_ID", "watch-cleaner-service")

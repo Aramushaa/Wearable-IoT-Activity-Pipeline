@@ -1,10 +1,10 @@
 """
 Standalone script to inspect the ONNX model metadata.
-Run locally (no Docker needed) — just needs onnxruntime installed.
+Run locally (no Docker needed); it only requires onnxruntime.
 
 This tells us:
   - Exact input shape the model expects
-  - Exact output shape → reveals how many classes the model predicts
+  - Exact output shape, which reveals how many classes the model predicts
 """
 
 import sys
@@ -26,6 +26,7 @@ MODEL_PATH = Path(__file__).parent / "model" / "L2MU_plain_leaky.onnx"
 
 
 def inspect_with_onnxruntime(model_path: str) -> None:
+    """Print input/output metadata using ONNX Runtime."""
     print("=" * 60)
     print("ONNX Runtime Inspection")
     print("=" * 60)
@@ -46,7 +47,7 @@ def inspect_with_onnxruntime(model_path: str) -> None:
         print(f"  Type : {out.type}")
         print()
 
-    # Try a dummy inference to get concrete output shape
+    # Try a dummy inference to get a concrete output shape for dynamic models.
     import numpy as np
 
     inp_meta = session.get_inputs()[0]
@@ -86,8 +87,9 @@ def inspect_with_onnxruntime(model_path: str) -> None:
 
 
 def inspect_with_onnx(model_path: str) -> None:
+    """Print lower-level graph metadata when the optional onnx package exists."""
     if not HAS_ONNX:
-        print("(Skipping onnx graph inspection — pip install onnx for more detail)")
+        print("(Skipping onnx graph inspection; pip install onnx for more detail)")
         return
 
     print("=" * 60)

@@ -1,3 +1,5 @@
+"""FastAPI entrypoint for MQTT ingest, query, and health endpoints."""
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,6 +20,7 @@ from .routers.sensors import router as sensors_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Start and stop background workers with the FastAPI application."""
     if INFLUX_ENABLED:
         start_influx_writer()
     start_mqtt_thread()
@@ -33,6 +36,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ingest-service", version="0.4.0", lifespan=lifespan)
 
+# Routers are kept small by topic: diagnostics, raw events, structured sensor
+# queries, and operational metadata.
 app.include_router(health_router)
 app.include_router(events_router)
 app.include_router(imu_router)

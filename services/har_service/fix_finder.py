@@ -1,5 +1,5 @@
 """
-Preprocessing sweep for the HAR model.
+Preprocessing sweep for the bundled HAR model.
 
 Purpose:
 - evaluate the ONNX model on device-separated streams
@@ -59,6 +59,7 @@ MODEL_LABELS = ["dribbling", "catch", "typing", "writing", "clapping", "teeth", 
 
 
 def query(sql: str) -> list[dict]:
+    """Run one InfluxDB SQL query for the preprocessing sweep."""
     params = urlencode({"db": INFLUX_DATABASE, "q": sql})
     url = f"{INFLUX_HOST}/api/v3/query_sql?{params}"
     req = Request(url, method="GET")
@@ -68,6 +69,7 @@ def query(sql: str) -> list[dict]:
 
 
 def fetch_streams(activity_code: str, limit: int) -> list[tuple[str, str]]:
+    """Fetch device-separated streams for one dataset activity code."""
     where = f"WHERE activity_gt = '{activity_code}'"
     if DEVICE_FILTER:
         where += f" AND device = '{DEVICE_FILTER}'"
@@ -90,6 +92,7 @@ def fetch_streams(activity_code: str, limit: int) -> list[tuple[str, str]]:
 
 
 def fetch_rows(activity_code: str, recording_id: str, device: str, limit: int) -> list[dict]:
+    """Fetch raw IMU columns for one activity/device/recording stream."""
     sql = f"""
     SELECT acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z
     FROM {IMU_TABLE}
@@ -103,6 +106,7 @@ def fetch_rows(activity_code: str, recording_id: str, device: str, limit: int) -
 
 
 def make_windows(rows: list[dict], max_windows: int) -> list[list[dict]]:
+    """Build a limited set of sliding windows from ordered rows."""
     windows = [
         rows[idx:idx + WINDOW_SIZE]
         for idx in range(0, len(rows) - WINDOW_SIZE + 1, WINDOW_STRIDE)
@@ -111,6 +115,7 @@ def make_windows(rows: list[dict], max_windows: int) -> list[list[dict]]:
 
 
 def rows_to_channels(window: list[dict], layout: str) -> np.ndarray:
+    """Convert a window into channel-first accelerometer/gyroscope data."""
     accel = np.array(
         [
             [float(row["acc_x"]) for row in window],
@@ -136,6 +141,7 @@ def rows_to_channels(window: list[dict], layout: str) -> np.ndarray:
 
 
 def apply_channel_preprocess(data: np.ndarray, mode: str) -> np.ndarray:
+    """Apply one channel-normalization candidate to a window."""
     processed = data.copy()
 
     if mode == "none":
@@ -166,6 +172,7 @@ def apply_channel_preprocess(data: np.ndarray, mode: str) -> np.ndarray:
 
 
 def apply_temporal_preprocess(data: np.ndarray, mode: str) -> np.ndarray:
+    """Apply one temporal-reduction candidate to a window."""
     if mode == "none":
         return data
 
@@ -181,6 +188,7 @@ def apply_temporal_preprocess(data: np.ndarray, mode: str) -> np.ndarray:
 
 
 def build_input_tensor(window: list[dict], layout: str, preprocess: str, temporal: str) -> np.ndarray:
+    """Build one ONNX input tensor for a sweep configuration."""
     data = rows_to_channels(window, layout=layout)
     data = apply_channel_preprocess(data, mode=preprocess)
     data = apply_temporal_preprocess(data, mode=temporal)
@@ -188,6 +196,7 @@ def build_input_tensor(window: list[dict], layout: str, preprocess: str, tempora
 
 
 def aggregate_scores(output: list[np.ndarray], mode: str) -> np.ndarray:
+    """Reduce ONNX output scores to one score per model label."""
     scores = np.array(output[0])
 
     if mode == "sum":
@@ -224,6 +233,7 @@ def aggregate_scores(output: list[np.ndarray], mode: str) -> np.ndarray:
 
 
 def collect_windows() -> dict[str, list[list[dict]]]:
+    """Collect a balanced pool of windows for each expected activity."""
     windows_by_activity: dict[str, list[list[dict]]] = defaultdict(list)
 
     print("-" * 70, flush=True)
@@ -259,6 +269,7 @@ def evaluate_config(
     temporal: str,
     aggregation: str,
 ) -> tuple[int, int, dict[str, tuple[int, int]]]:
+    """Evaluate one layout/preprocess/temporal/aggregation configuration."""
     correct = 0
     total = 0
     per_label: dict[str, tuple[int, int]] = {}
@@ -300,6 +311,7 @@ def is_model_input_compatible(
     preprocess: str,
     temporal: str,
 ) -> tuple[bool, str | None]:
+    """Check whether a configuration produces a tensor accepted by the model."""
     try:
         model_input = build_input_tensor(
             sample_window,
@@ -314,6 +326,7 @@ def is_model_input_compatible(
 
 
 def format_label_summary(per_label: dict[str, tuple[int, int]]) -> str:
+    """Format per-label accuracy compactly for console output."""
     parts = []
     for label in ("typing", "teeth", "catch", "dribbling", "writing", "clapping", "folding"):
         correct, total = per_label.get(label, (0, 0))
@@ -323,6 +336,7 @@ def format_label_summary(per_label: dict[str, tuple[int, int]]) -> str:
 
 
 def main() -> None:
+    """Run the preprocessing sweep and print the best configurations."""
     print("=" * 70, flush=True)
     print("HAR PREPROCESSING SWEEP", flush=True)
     print("=" * 70, flush=True)

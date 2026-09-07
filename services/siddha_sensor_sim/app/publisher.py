@@ -1,3 +1,5 @@
+"""MQTT publisher for Siddha IMU replay samples."""
+
 from __future__ import annotations
 
 import json
@@ -26,6 +28,7 @@ class MqttPublisher:
         qos: int = 0,
         wait_for_publish: bool = False,
     ):
+        """Create a publisher with reusable connection and topic settings."""
         self.host = host
         self.port = port
         self.topic_prefix = topic_prefix.rstrip("/")

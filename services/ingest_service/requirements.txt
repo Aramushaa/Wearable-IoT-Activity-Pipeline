@@ -1,3 +1,4 @@
+# FastAPI API server, MQTT client, and dotenv config loading for ingest-service.
 fastapi
 uvicorn
 paho-mqtt

@@ -1,3 +1,5 @@
+"""Entrypoint for replaying Siddha IMU rows to MQTT."""
+
 from __future__ import annotations
 
 import logging
@@ -51,6 +53,7 @@ def compute_sleep_seconds(
 
 
 def main() -> None:
+    """Load the dataset, connect to MQTT, and publish samples in order."""
     logger.info("Starting Siddha sensor simulator")
 
     logger.info(

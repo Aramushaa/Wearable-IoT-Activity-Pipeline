@@ -1,0 +1,78 @@
+plugins { id 'com.android.application' }
+def releaseValues = new Properties()
+def releaseFile = rootProject.file('release.properties')
+if (releaseFile.exists()) releaseFile.withInputStream { releaseValues.load(it) }
+def value = { key, fallback -> releaseValues.getProperty(key, fallback) }
+def quoted = { text -> '"' + text.replace('\\', '\\\\').replace('"', '\\"') + '"' }
+
+android {
+    namespace 'com.gatearmy.game'
+    compileSdk 36
+    defaultConfig {
+        applicationId value('APPLICATION_ID', 'com.sleepypandagames.gatearmy')
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    signingConfigs {
+        release {
+            def keyPath = System.getenv('GATE_ARMY_KEYSTORE')
+            if (keyPath) {
+                storeFile file(keyPath)
+                storePassword System.getenv('GATE_ARMY_STORE_PASSWORD')
+                keyAlias System.getenv('GATE_ARMY_KEY_ALIAS')
+                keyPassword System.getenv('GATE_ARMY_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-test'
+            manifestPlaceholders = [admobAppId: 'ca-app-pub-3940256099942544~3347511713']
+            buildConfigField 'String', 'REWARDED_ID', quoted('ca-app-pub-3940256099942544/5224354917')
+            buildConfigField 'String', 'PRIVACY_URL', quoted(value('PRIVACY_POLICY_URL', ''))
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+            manifestPlaceholders = [admobAppId: value('ADMOB_APP_ID', 'REPLACE_ME')]
+            buildConfigField 'String', 'REWARDED_ID', quoted(value('ADMOB_REWARDED_ID', 'REPLACE_ME'))
+            buildConfigField 'String', 'PRIVACY_URL', quoted(value('PRIVACY_POLICY_URL', ''))
+        }
+    }
+}
+
+tasks.register('validateReleaseConfig') {
+    doLast {
+        def appId = value('ADMOB_APP_ID', '')
+        def rewardId = value('ADMOB_REWARDED_ID', '')
+        if (!(appId ==~ /ca-app-pub-\d{16}~\d{10}/) || appId.contains('3940256099942544'))
+            throw new GradleException('Release needs your own AdMob app ID in release.properties.')
+        if (!(rewardId ==~ /ca-app-pub-\d{16}\/\d{10}/) || rewardId.contains('3940256099942544'))
+            throw new GradleException('Release needs your own rewarded ad unit ID.')
+        def privacy = value('PRIVACY_POLICY_URL', '')
+        if (!privacy.startsWith('https://') || privacy.contains('REPLACE') || privacy.contains('example.'))
+            throw new GradleException('Release needs the published privacy policy URL.')
+        if ((!System.getenv('GATE_ARMY_KEYSTORE') || !System.getenv('GATE_ARMY_STORE_PASSWORD') ||
+            !System.getenv('GATE_ARMY_KEY_ALIAS') || !System.getenv('GATE_ARMY_KEY_PASSWORD')) &&
+            !project.hasProperty('android.injected.signing.store.file'))
+            throw new GradleException('Release signing values are missing. Use Android Studio or the documented environment variables; never commit keys.')
+    }
+}
+tasks.configureEach { if (name == 'preReleaseBuild') dependsOn 'validateReleaseConfig' }
+
+dependencies {
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.webkit:webkit:1.14.0'
+    implementation 'com.google.android.gms:play-services-ads:25.4.0'
+    implementation 'com.google.android.ump:user-messaging-platform:4.0.0'
+}

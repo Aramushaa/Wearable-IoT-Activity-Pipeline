@@ -1,3 +1,5 @@
+"""Entrypoint for replaying ECG dataset samples to MQTT."""
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def sleep_seconds(previous: Optional[EcgSample], current: EcgSample) -> float:
+    """Preserve recording timing between adjacent ECG samples."""
     if previous is None:
         return 0.0
     if REPLAY_SPEED <= 0:
@@ -34,6 +37,7 @@ def sleep_seconds(previous: Optional[EcgSample], current: EcgSample) -> float:
 
 
 def main() -> None:
+    """Load ECG samples, connect to MQTT, and replay them with timing."""
     logger.info(
         "Starting ECG dataset simulator | dataset=%s | subject=%s | task=%s | max_seconds=%s",
         DATASET_PATH,

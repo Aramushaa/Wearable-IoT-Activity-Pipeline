@@ -1,3 +1,5 @@
+"""Clean raw MetaWear accelerometer/gyroscope MQTT events into IMU rows."""
+
 from __future__ import annotations
 
 import json
@@ -29,6 +31,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RawSensorSample:
+    """One raw MetaWear sensor notification after JSON parsing."""
+
     sensor: str
     sensor_ts: float
     x: float
@@ -41,10 +45,13 @@ class RawSensorSample:
     sampling_rate_hz: float
 
 
+# Pairing state is keyed by `(device, recording_id)` so multiple watches or
+# sessions can be processed by the same cleaner without mixing samples.
 latest_acc: dict[tuple[str, str], RawSensorSample] = {}
 clean_sample_idx: dict[tuple[str, str], int] = {}
 
-# ── Observability counters ──────────────────────────────────────────────
+# Observability counters are intentionally simple module-level values because
+# this service has one MQTT callback loop per process.
 _COUNTERS = {
     "raw_acc_received": 0,
     "raw_gyro_received": 0,
@@ -58,10 +65,12 @@ client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
 
 
 def now_iso() -> str:
+    """Return a compact UTC timestamp with a trailing Z."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _as_float(payload: dict[str, Any], key: str) -> float:
+    """Read a required float from a raw watch payload."""
     value = payload.get(key)
     if value is None:
         raise ValueError(f"missing field: {key}")
@@ -69,6 +78,7 @@ def _as_float(payload: dict[str, Any], key: str) -> float:
 
 
 def parse_raw_payload(payload: dict[str, Any]) -> RawSensorSample:
+    """Parse raw MetaWear JSON into the internal sample model."""
     sensor = str(payload.get("sensor", "")).strip().lower()
     if sensor not in {"acc", "gyro"}:
         raise ValueError(f"unsupported sensor type: {sensor!r}")
@@ -88,6 +98,7 @@ def parse_raw_payload(payload: dict[str, Any]) -> RawSensorSample:
 
 
 def validate_sample(sample: RawSensorSample) -> None:
+    """Reject non-finite values and physically implausible sensor spikes."""
     bound = MAX_ABS_ACC if sample.sensor == "acc" else MAX_ABS_GYRO
     for axis, value in {"x": sample.x, "y": sample.y, "z": sample.z}.items():
         if not math.isfinite(value):
@@ -101,6 +112,7 @@ def validate_sample(sample: RawSensorSample) -> None:
 
 
 def build_clean_payload(acc: RawSensorSample, gyro: RawSensorSample) -> dict[str, Any]:
+    """Merge the latest accelerometer sample with a gyroscope sample."""
     key = (gyro.device, gyro.recording_id)
     idx = clean_sample_idx.get(key, 0)
     clean_sample_idx[key] = idx + 1
@@ -132,6 +144,7 @@ def build_clean_payload(acc: RawSensorSample, gyro: RawSensorSample) -> dict[str
 
 
 def maybe_publish_clean(sample: RawSensorSample) -> None:
+    """Store accelerometer samples and publish a clean row for valid gyro pairs."""
     key = (sample.device, sample.recording_id)
 
     if sample.sensor == "acc":
@@ -167,6 +180,7 @@ def maybe_publish_clean(sample: RawSensorSample) -> None:
 
 
 def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
+    """Subscribe to raw watch rows after the MQTT connection opens."""
     logger.info("Connected to MQTT | host=%s | port=%s | rc=%s", MQTT_HOST, MQTT_PORT, reason_code)
     client_.subscribe(RAW_TOPIC, qos=QOS)
     logger.info("Subscribed to raw topic: %s", RAW_TOPIC)
@@ -174,6 +188,7 @@ def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=No
 
 
 def on_message(client_: mqtt.Client, userdata, msg) -> None:
+    """Parse, validate, pair, and republish one raw watch MQTT message."""
     try:
         payload = json.loads(msg.payload.decode("utf-8"))
         sample = parse_raw_payload(payload)
@@ -187,6 +202,7 @@ def on_message(client_: mqtt.Client, userdata, msg) -> None:
 
 
 def main() -> None:
+    """Run the watch cleaner forever, reconnecting after broker errors."""
     client.on_connect = on_connect
     client.on_message = on_message
 

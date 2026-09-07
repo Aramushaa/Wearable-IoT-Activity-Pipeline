@@ -1,3 +1,5 @@
+"""MQTT cleaner that validates raw ECG rows and publishes canonical rows."""
+
 from __future__ import annotations
 
 import json
@@ -18,10 +20,12 @@ client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
 
 
 def now_iso() -> str:
+    """Return a compact UTC timestamp with a trailing Z."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _float_value(payload: dict[str, Any], key: str) -> float:
+    """Read a required finite float from a raw ECG payload."""
     value = float(payload[key])
     if not math.isfinite(value):
         raise ValueError(f"{key} must be finite")
@@ -29,6 +33,7 @@ def _float_value(payload: dict[str, Any], key: str) -> float:
 
 
 def clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate raw ECG JSON and return the canonical clean payload."""
     sensor_ts = _float_value(payload, "sensor_ts")
     ecg_value = _float_value(payload, "ecg_value")
 
@@ -50,6 +55,7 @@ def clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
+    """Subscribe to raw ECG rows after the MQTT connection opens."""
     logger.info("Connected to MQTT | host=%s | port=%s | rc=%s", MQTT_HOST, MQTT_PORT, reason_code)
     client_.subscribe(RAW_TOPIC, qos=QOS)
     logger.info("Subscribed to raw topic: %s", RAW_TOPIC)
@@ -57,6 +63,7 @@ def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=No
 
 
 def on_message(client_: mqtt.Client, userdata, msg) -> None:
+    """Clean one raw MQTT message and publish it to the clean topic."""
     try:
         payload = json.loads(msg.payload.decode("utf-8"))
         clean = clean_payload(payload)
@@ -68,6 +75,7 @@ def on_message(client_: mqtt.Client, userdata, msg) -> None:
 
 
 def main() -> None:
+    """Run the cleaner forever, reconnecting after broker errors."""
     client.on_connect = on_connect
     client.on_message = on_message
 

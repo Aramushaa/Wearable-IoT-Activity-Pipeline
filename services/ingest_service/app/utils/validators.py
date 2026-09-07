@@ -1,3 +1,5 @@
+"""Input validators shared by FastAPI routers and configuration loading."""
+
 import re
 from datetime import datetime
 
@@ -27,11 +29,8 @@ def validate_sql_literal(value: str, name: str) -> str:
     """
     Validate a string that will be interpolated into SQL as a quoted literal.
 
-    Allows only:
-    - letters
-    - numbers
-    - underscore
-    - hyphen
+    The routers interpolate these values into simple SQL strings, so we only
+    allow letters, numbers, underscores, and hyphens.
     """
     if not _SAFE_SQL_LITERAL.fullmatch(value):
         raise HTTPException(

@@ -1,3 +1,5 @@
+"""Dataset loader for the Siddha human-activity IMU replay."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +11,8 @@ import pandas as pd
 
 @dataclass
 class SensorSample:
+    """Canonical IMU sample published by the Siddha simulator."""
+
     device: str
     activity_gt: str
     recording_id: str
@@ -46,6 +50,7 @@ class SiddhaDatasetLoader:
     }
 
     def __init__(self, dataset_path: str):
+        """Keep the path as a `Path` object for validation and loading."""
         self.dataset_path = Path(dataset_path)
 
     def load_dataframe(self) -> pd.DataFrame:

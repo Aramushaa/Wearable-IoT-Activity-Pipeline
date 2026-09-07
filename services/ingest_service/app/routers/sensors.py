@@ -1,3 +1,5 @@
+"""Structured sensor query endpoints backed by InfluxDB SQL."""
+
 from typing import Optional
 
 from fastapi import APIRouter, Query
@@ -15,6 +17,7 @@ router = APIRouter(prefix="/sensors", tags=["sensors"])
 
 
 def _time_filters(from_ts: Optional[str], to_ts: Optional[str]) -> list[str]:
+    """Build validated SQL predicates for optional time bounds."""
     where = []
     if from_ts:
         safe_from = validate_iso_timestamp(from_ts, "from")
@@ -31,6 +34,7 @@ def _common_filters(
     from_ts: Optional[str],
     to_ts: Optional[str],
 ) -> list[str]:
+    """Build common device/recording/time filters for sensor tables."""
     where = _time_filters(from_ts, to_ts)
 
     if device:
@@ -45,6 +49,7 @@ def _common_filters(
 
 
 def _where_sql(where: list[str]) -> str:
+    """Render a WHERE clause only when at least one predicate exists."""
     return f"WHERE {' AND '.join(where)}" if where else ""
 
 
@@ -59,6 +64,7 @@ def get_dataset_imu(
     order_by: str = Query("dataset_ts", pattern="^(dataset_ts|time)$"),
     order_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):
+    """Query deterministic Siddha dataset IMU rows."""
     where = _common_filters(device, recording_id, from_ts, to_ts)
 
     if activity_gt:
@@ -102,6 +108,7 @@ def get_watch_imu(
     order_by: str = Query("time", pattern="^(dataset_ts|time)$"),
     order_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
+    """Query live MetaWear watch rows stored after cleaner normalization."""
     where = _common_filters("watch", recording_id, from_ts, to_ts)
 
     sql = f"""
@@ -142,6 +149,7 @@ def get_eeg(
     to_ts: Optional[str] = Query(None, alias="to"),
     order_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
+    """Query cleaned EEG rows and metadata from the biosignal table."""
     where = _time_filters(from_ts, to_ts)
 
     if subject:
@@ -190,6 +198,7 @@ def get_ecg(
     to_ts: Optional[str] = Query(None, alias="to"),
     order_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
+    """Query cleaned ECG rows and metadata from the biosignal table."""
     where = _time_filters(from_ts, to_ts)
 
     if subject:

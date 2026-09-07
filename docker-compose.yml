@@ -1,4 +1,5 @@
 services:
+  # MQTT broker used by simulators, cleaners, ingest, HAR live mode, and Grafana.
   emqx:
     image: emqx:latest
     container_name: emqx
@@ -12,6 +13,7 @@ services:
       retries: 5
     restart: always
 
+  # InfluxDB 3 stores generic events, structured sensor rows, and HAR predictions.
   influxdb3:
     image: influxdb:3-core
     container_name: influxdb3
@@ -23,6 +25,7 @@ services:
       - influxdb3_data:/root/.influxdb
     restart: always
 
+  # FastAPI service that subscribes to MQTT and writes normalized data to InfluxDB.
   ingest-service:
     build:
       context: ./services/ingest_service
@@ -39,6 +42,7 @@ services:
       - "8000:8000"
     restart: always
 
+  # Optional InfluxDB browser for manual SQL queries and table inspection.
   influxdb3-explorer:
     image: influxdata/influxdb3-ui:1.6.2
     container_name: influxdb3-explorer
@@ -48,6 +52,7 @@ services:
     depends_on:
       - influxdb3
 
+  # Siddha IMU dataset replay. Start with `docker compose --profile replay up`.
   siddha-sensor-sim:
     profiles: ["replay"]
     build:
@@ -63,6 +68,7 @@ services:
       - ./dataset:/app/dataset:ro
     restart: on-failure
 
+  # EEG OpenNeuro replay for Phase 6 validation.
   eeg-dataset-sim:
     profiles: ["phase6"]
     build:
@@ -82,6 +88,7 @@ services:
       - ./dataset:/app/dataset:ro
     restart: on-failure
 
+  # Validates raw EEG replay rows and publishes canonical clean EEG rows.
   eeg-cleaner-service:
     profiles: ["phase6"]
     build:
@@ -99,6 +106,7 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ECG OpenNeuro replay for Phase 6 validation.
   ecg-dataset-sim:
     profiles: ["phase6"]
     build:
@@ -114,6 +122,7 @@ services:
       - ./dataset:/app/dataset:ro
     restart: on-failure
 
+  # Validates raw ECG replay rows and publishes canonical clean ECG rows.
   ecg-cleaner-service:
     profiles: ["phase6"]
     build:
@@ -127,6 +136,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Runs HAR inference from stored dataset rows or live watch MQTT rows.
   har-service:
     build:
       context: ./services/har_service
@@ -142,6 +152,7 @@ services:
     restart: unless-stopped
 
 
+  # Pairs raw MetaWear ACC/GYRO messages into canonical clean IMU rows.
   watch-cleaner-service:
     build:
       context: ./services/watch_cleaner_service
@@ -154,6 +165,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Dashboards for MQTT live streams, InfluxDB tables, and HAR predictions.
   grafana:
     image: grafana/grafana:12.2.0
     container_name: grafana
@@ -165,7 +177,7 @@ services:
       GF_INSTALL_PLUGINS: grafana-mqtt-datasource
       GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
 
-      # This passes the token from your .env file into the Grafana container
+      # This passes the token from `.env` into the Grafana container.
       INFLUX_TOKEN: ${INFLUX_TOKEN}
 
     volumes:

@@ -1,5 +1,6 @@
 apiVersion: 1
 
+# Live MQTT datasource used by panels that subscribe directly to broker topics.
 datasources:
   - name: MQTT-Live
     uid: mqtt_live

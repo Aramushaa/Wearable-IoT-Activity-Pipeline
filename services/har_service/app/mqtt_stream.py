@@ -1,3 +1,5 @@
+"""Live MQTT streaming mode for HAR inference."""
+
 from __future__ import annotations
 
 import json
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def now_iso() -> str:
+    """Return a compact UTC timestamp with a trailing Z."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
@@ -31,6 +34,7 @@ class LiveHarMqttService:
     """
 
     def __init__(self, inference) -> None:
+        """Create the MQTT subscriber and prediction publisher."""
         self.inference = inference
         self.buffers: dict[tuple[str, str], deque[dict[str, Any]]] = {}
         self.prediction_publisher = PredictionPublisher()
@@ -39,6 +43,7 @@ class LiveHarMqttService:
         self.client.on_message = self.on_message
 
     def on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
+        """Subscribe to clean IMU rows after the broker connection opens."""
         logger.info(
             "HAR MQTT mode connected | host=%s | port=%s | rc=%s",
             settings.mqtt_host,
@@ -49,6 +54,7 @@ class LiveHarMqttService:
         logger.info("HAR subscribed to clean IMU topic: %s", settings.mqtt_topic)
 
     def validate_clean_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        """Validate and normalize the clean IMU row contract."""
         required = {
             "device",
             "recording_id",
@@ -77,6 +83,7 @@ class LiveHarMqttService:
         return row
 
     def on_message(self, client, userdata, msg) -> None:
+        """Decode one clean IMU MQTT message and append it to its stream buffer."""
         try:
             row = json.loads(msg.payload.decode("utf-8"))
             row = self.validate_clean_row(row)
@@ -85,6 +92,7 @@ class LiveHarMqttService:
             logger.warning("Dropped clean IMU row | topic=%s | error=%s", msg.topic, exc)
 
     def add_row(self, row: dict[str, Any]) -> None:
+        """Add one row to a per-stream buffer and infer when a window is ready."""
         key = (row["device"], row["recording_id"])
         buffer = self.buffers.setdefault(key, deque())
         buffer.append(row)
@@ -101,6 +109,7 @@ class LiveHarMqttService:
             buffer.popleft()
 
     def evaluate_window(self, window: list[dict[str, Any]]) -> None:
+        """Run inference for a complete live window and publish the result."""
         model_input = window_to_model_input(window)
         prediction_details = self.inference.predict_details(model_input)
         metadata = model_input["metadata"]
@@ -149,6 +158,7 @@ class LiveHarMqttService:
         )
 
     def run(self) -> None:
+        """Run the live MQTT service forever, reconnecting after failures."""
         while True:
             try:
                 logger.info(

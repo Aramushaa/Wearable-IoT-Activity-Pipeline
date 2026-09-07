@@ -1,6 +1,10 @@
+"""Configuration for the HAR inference service."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    """Runtime settings loaded from `HAR_*` environment variables."""
+
     service_name: str = "har-service"
     # Phase 3 uses db_polling for reproducible dataset evaluation.
     # Phase 4 uses mqtt_stream for live watch prediction.
@@ -41,6 +45,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_activity_codes(self) -> list[str]:
+        """Return configured Siddha activity codes as a clean list."""
         return [
             item.strip()
             for item in self.allowed_activity_gt.split(",")

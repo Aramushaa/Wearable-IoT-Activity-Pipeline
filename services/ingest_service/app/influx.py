@@ -1,4 +1,10 @@
-# services/ingest_service/app/influx.py
+"""InfluxDB 3 write/query helpers for the ingest service.
+
+MQTT callbacks call the public `write_*` functions, which build Influx line
+protocol and enqueue it. A background writer drains that queue in batches so
+short database outages do not block message ingestion.
+"""
+
 import json
 import math
 import threading
@@ -31,10 +37,14 @@ MAX_RETRIES = 3
 
 @dataclass
 class QueueItem:
+    """One line-protocol row plus retry metadata for the writer queue."""
+
     line: str
     retries: int = 0
 
 
+# Queue state is module-level because FastAPI and MQTT callbacks share this
+# process. All access to `_WRITE_QUEUE` must hold `_QUEUE_LOCK`.
 _WRITE_QUEUE: Deque[QueueItem] = deque()
 _QUEUE_LOCK = threading.Lock()
 _FLUSH_SIGNAL = threading.Event()
@@ -61,6 +71,7 @@ def iso_to_epoch_nanos(ts: str) -> int:
 
 
 def parse_topic(topic: str) -> tuple[str, str]:
+    """Extract the high-level stream and source id from a tennis MQTT topic."""
     parts = topic.split("/")
     stream = parts[1] if len(parts) > 1 else "unknown"
     source_id = parts[2] if len(parts) > 2 else "unknown"
@@ -68,6 +79,7 @@ def parse_topic(topic: str) -> tuple[str, str]:
 
 
 def _write_lp_v3(line_protocol: str, db: str, precision: str = "s") -> None:
+    """Send line protocol to InfluxDB 3 using the HTTP write endpoint."""
     if not INFLUX_TOKEN:
         raise RuntimeError("INFLUX_TOKEN is empty")
 
@@ -90,6 +102,7 @@ def _write_lp_v3(line_protocol: str, db: str, precision: str = "s") -> None:
 
 
 def _enqueue_line(line: str) -> None:
+    """Add a line-protocol row to the bounded writer queue."""
     global _DROPPED_LINE_COUNT
 
     with _QUEUE_LOCK:
@@ -106,6 +119,7 @@ def _enqueue_line(line: str) -> None:
 
 
 def _drain_lines(limit: Optional[int] = None) -> list[QueueItem]:
+    """Remove up to `limit` queued rows for one write attempt."""
     with _QUEUE_LOCK:
         if not _WRITE_QUEUE:
             return []
@@ -153,6 +167,7 @@ def _requeue_failed_items(items: list[QueueItem]) -> None:
 
 
 def _flush_lines(items: list[QueueItem]) -> None:
+    """Write a drained batch to InfluxDB as a newline-delimited payload."""
     if not items:
         return
 
@@ -161,6 +176,7 @@ def _flush_lines(items: list[QueueItem]) -> None:
 
 
 def _writer_loop() -> None:
+    """Batch queued line-protocol rows until shutdown is requested."""
     global _FAILED_BATCH_COUNT
 
     flush_interval = max(INFLUX_FLUSH_INTERVAL_MS, 1) / 1000.0
@@ -199,6 +215,7 @@ def _writer_loop() -> None:
 
 
 def start_influx_writer() -> None:
+    """Start the background InfluxDB writer if it is enabled and not running."""
     global _WRITER_THREAD
 
     if not INFLUX_ENABLED:
@@ -217,6 +234,7 @@ def start_influx_writer() -> None:
 
 
 def stop_influx_writer() -> None:
+    """Signal the writer thread to flush outstanding rows and exit."""
     global _WRITER_THREAD
 
     if not _WRITER_THREAD:
@@ -239,10 +257,12 @@ def escape_key(value: str) -> str:
 
 
 def escape_field_string(value: Any) -> str:
+    """Escape a string field value for InfluxDB line protocol."""
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _finite_float(value: Any, name: str) -> float:
+    """Convert a payload value to a finite float with a field-specific error."""
     number = float(value)
     if not math.isfinite(number):
         raise ValueError(f"{name} must be finite")
@@ -262,6 +282,7 @@ def _biosignal_timestamp(payload: dict) -> int:
 
 
 def write_event_to_influx(ev: Dict[str, Any]) -> None:
+    """Store the raw event envelope as a JSON payload field."""
     if not INFLUX_ENABLED:
         return
 
@@ -282,6 +303,7 @@ def write_event_to_influx(ev: Dict[str, Any]) -> None:
 
 
 def query_influx_sql(sql: str) -> list[dict]:
+    """Run a SQL query against InfluxDB 3 and return decoded JSON rows."""
     if not INFLUX_TOKEN:
         raise RuntimeError("INFLUX_TOKEN is empty")
 
@@ -297,6 +319,7 @@ def query_influx_sql(sql: str) -> list[dict]:
 
 
 def get_influx_writer_stats() -> dict:
+    """Expose writer queue counters for `/health` and `/stats` endpoints."""
     with _QUEUE_LOCK:
         queue_depth = len(_WRITE_QUEUE)
 

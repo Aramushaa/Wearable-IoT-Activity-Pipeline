@@ -1,3 +1,5 @@
+"""OpenNeuro BrainVision EEG loader used by the dataset replay service."""
+
 from __future__ import annotations
 
 import csv
@@ -10,6 +12,8 @@ import mne
 
 @dataclass(frozen=True)
 class EegSample:
+    """One EEG sample with all selected channel values at a sensor timestamp."""
+
     source: str
     device: str
     subject: str
@@ -22,6 +26,8 @@ class EegSample:
 
 
 class EegDatasetLoader:
+    """Load EEG channels from a BrainVision recording into publishable samples."""
+
     def __init__(
         self,
         dataset_path: str,
@@ -41,17 +47,21 @@ class EegDatasetLoader:
 
     @property
     def eeg_dir(self) -> Path:
+        """Directory containing BrainVision files for the configured subject."""
         return self.dataset_path / self.subject / "eeg"
 
     @property
     def vhdr_path(self) -> Path:
+        """BrainVision header path used by MNE to load the recording."""
         return self.eeg_dir / f"{self.recording_id}_eeg.vhdr"
 
     @property
     def channels_path(self) -> Path:
+        """BIDS channels table used to select good EEG channels only."""
         return self.eeg_dir / f"{self.recording_id}_channels.tsv"
 
     def _load_eeg_channel_names(self) -> list[str]:
+        """Read good EEG channel names from the BIDS channels TSV."""
         if not self.channels_path.exists():
             raise FileNotFoundError(f"Channels TSV not found: {self.channels_path}")
 
@@ -73,6 +83,7 @@ class EegDatasetLoader:
         return names[: self.channel_limit]
 
     def load_samples(self) -> list[EegSample]:
+        """Load, crop, optionally downsample, and materialize EEG samples."""
         if self.downsample_hz <= 0:
             raise ValueError("EEG_DOWNSAMPLE_HZ must be > 0")
         if self.max_seconds <= 0:
@@ -116,4 +127,5 @@ class EegDatasetLoader:
         return samples
 
     def iter_samples(self) -> Iterator[EegSample]:
+        """Yield samples through the same interface as streaming loaders."""
         yield from self.load_samples()

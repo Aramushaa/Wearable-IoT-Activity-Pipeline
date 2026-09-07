@@ -1,3 +1,5 @@
+"""MQTT cleaner that validates raw EEG rows and publishes canonical rows."""
+
 from __future__ import annotations
 
 import json
@@ -18,10 +20,12 @@ client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=MQTT_CLIENT_ID)
 
 
 def now_iso() -> str:
+    """Return a compact UTC timestamp with a trailing Z."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _float_value(payload: dict[str, Any], key: str) -> float:
+    """Read a required finite float from a raw EEG payload."""
     value = float(payload[key])
     if not math.isfinite(value):
         raise ValueError(f"{key} must be finite")
@@ -29,12 +33,15 @@ def _float_value(payload: dict[str, Any], key: str) -> float:
 
 
 def clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate raw EEG JSON and return the canonical clean payload."""
     channels_obj = payload.get("channels")
     if not isinstance(channels_obj, dict) or not channels_obj:
         raise ValueError("channels must be a non-empty object")
 
     channels: dict[str, float] = {}
     for name, value in channels_obj.items():
+        # Limit channel count at the cleaner boundary so downstream storage and
+        # dashboards have a predictable schema size.
         if len(channels) >= CHANNEL_LIMIT:
             break
         channel_value = float(value)
@@ -65,6 +72,7 @@ def clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=None) -> None:
+    """Subscribe to raw EEG rows after the MQTT connection opens."""
     logger.info("Connected to MQTT | host=%s | port=%s | rc=%s", MQTT_HOST, MQTT_PORT, reason_code)
     client_.subscribe(RAW_TOPIC, qos=QOS)
     logger.info("Subscribed to raw topic: %s", RAW_TOPIC)
@@ -72,6 +80,7 @@ def on_connect(client_: mqtt.Client, userdata, flags, reason_code, properties=No
 
 
 def on_message(client_: mqtt.Client, userdata, msg) -> None:
+    """Clean one raw MQTT message and publish it to the clean topic."""
     try:
         payload = json.loads(msg.payload.decode("utf-8"))
         clean = clean_payload(payload)
@@ -83,6 +92,7 @@ def on_message(client_: mqtt.Client, userdata, msg) -> None:
 
 
 def main() -> None:
+    """Run the cleaner forever, reconnecting after broker errors."""
     client.on_connect = on_connect
     client.on_message = on_message
 

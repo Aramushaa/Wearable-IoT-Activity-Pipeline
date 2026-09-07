@@ -1,8 +1,12 @@
+"""Configuration for the Siddha IMU dataset replay service."""
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Runtime settings loaded from `SIDDHA_*` environment variables."""
+
     mqtt_broker_host: str = "emqx"
     mqtt_broker_port: int = 1883
     mqtt_topic_prefix: str = "tennis/sensor"
@@ -11,8 +15,8 @@ class Settings(BaseSettings):
 
     dataset_path: str = "/app/dataset/data.parquet"
 
-    replay_mode: str = "realtime"   # "realtime" or "fast"
-    replay_speed: float = 1.0       # 1.0 = real-time, 2.0 = 2x faster
+    replay_mode: str = "realtime"   # "realtime" preserves dataset timing; "fast" skips sleeps.
+    replay_speed: float = 1.0       # 1.0 = real time, 2.0 = twice as fast.
     loop_forever: bool = False
     
     default_device_filter: str | None = None

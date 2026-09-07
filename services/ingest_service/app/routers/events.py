@@ -1,3 +1,5 @@
+"""Event and debug publish endpoints for the ingest API."""
+
 import json
 from typing import Any, Dict, Optional
 
@@ -20,6 +22,7 @@ def get_events(
     to_ts: Optional[str] = Query(None, alias="to"),
     source: str = Query("auto", pattern="^(auto|influx|memory)$"),
 ):
+    """Return recent MQTT events from InfluxDB when possible, else memory."""
     use_influx = INFLUX_ENABLED and INFLUX_TOKEN and source in ("auto", "influx")
 
     if use_influx:
@@ -54,6 +57,8 @@ def get_events(
 
 
 class PublishIn(BaseModel):
+    """Request body for publishing a JSON payload to MQTT."""
+
     topic: str = Field(default=PUB_TOPIC)
     payload: Dict[str, Any]
 
@@ -61,6 +66,7 @@ class PublishIn(BaseModel):
 @router.post("/publish")
 @router.post("/debug/publish")
 def publish(data: PublishIn):
+    """Publish a JSON message through the service MQTT client."""
     result = mqtt_client.publish(data.topic, json.dumps(data.payload), qos=0)
     mqtt_rc = int(result.rc)
 

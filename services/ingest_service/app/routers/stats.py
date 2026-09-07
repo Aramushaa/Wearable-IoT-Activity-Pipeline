@@ -1,3 +1,5 @@
+"""Operational statistics endpoint for stored rows and writer health."""
+
 from fastapi import APIRouter
 
 from ..config import (
@@ -38,7 +40,8 @@ def get_stats():
     writer queue.  Each query is wrapped so one missing or empty table
     does not crash the whole endpoint.
     """
-    # ── row counts ───────────────────────────────────────────────────
+    # Row counts are safe-counted because a fresh environment may not have
+    # created every table yet.
     events_count = (
         _safe_count(INFLUX_TABLE) if INFLUX_WRITE_GENERIC_EVENTS else "disabled"
     )
@@ -47,13 +50,13 @@ def get_stats():
     eeg_count = _safe_count(INFLUX_EEG_TABLE)
     ecg_count = _safe_count(INFLUX_ECG_TABLE)
 
-    # ── per-device breakdown (dataset table) ────────────────────────
+    # Per-device breakdown for the deterministic dataset IMU table.
     devices = _safe_query(
         f"SELECT device, COUNT(*) AS n FROM {INFLUX_IMU_TABLE} "
         f"GROUP BY device ORDER BY n DESC"
     )
 
-    # ── writer internals ────────────────────────────────────────────
+    # Writer internals expose queue pressure and retry/dropped-line counts.
     writer_stats = get_influx_writer_stats() if INFLUX_ENABLED else None
 
     return {

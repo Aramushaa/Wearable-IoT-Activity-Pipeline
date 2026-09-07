@@ -1,3 +1,5 @@
+"""Entrypoint for replaying EEG dataset samples to MQTT."""
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 def sleep_seconds(previous: Optional[EegSample], current: EegSample) -> float:
+    """Preserve recording timing between adjacent EEG samples."""
     if previous is None:
         return 0.0
     if REPLAY_SPEED <= 0:
@@ -35,6 +38,7 @@ def sleep_seconds(previous: Optional[EegSample], current: EegSample) -> float:
 
 
 def main() -> None:
+    """Load EEG samples, connect to MQTT, and replay them with timing."""
     logger.info(
         "Starting EEG dataset simulator | dataset=%s | subject=%s | task=%s | max_seconds=%s",
         DATASET_PATH,

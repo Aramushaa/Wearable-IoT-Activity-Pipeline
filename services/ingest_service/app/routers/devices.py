@@ -1,3 +1,5 @@
+"""Device discovery endpoint across configured sensor tables."""
+
 from fastapi import APIRouter
 
 from ..config import (
@@ -12,6 +14,7 @@ router = APIRouter(tags=["devices"])
 
 
 def _safe_devices(table: str) -> list[str]:
+    """Return distinct device values for a table, ignoring missing tables."""
     try:
         rows = query_influx_sql(
             f"SELECT DISTINCT device FROM {table} ORDER BY device ASC"

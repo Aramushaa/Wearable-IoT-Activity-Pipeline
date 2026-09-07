@@ -1,3 +1,5 @@
+"""Build and write HAR prediction points in Influx line protocol."""
+
 from __future__ import annotations
 
 from .config import settings
@@ -16,6 +18,7 @@ def build_prediction_line(
     confidence: float,
     metadata: dict,
 ) -> str:
+    """Build the line-protocol row for one HAR prediction."""
     # MQTT live mode passes prediction_epoch_ns (wall-clock) so Grafana can
     # show predictions in real time.  DB-polling mode uses the synthetic base
     # epoch + dataset_ts for deterministic, reproducible alignment with the
@@ -53,6 +56,7 @@ def write_prediction_point(
     confidence: float,
     metadata: dict,
 ) -> None:
+    """Write one HAR prediction point to InfluxDB."""
     write_line_protocol(
         build_prediction_line(
             device=device,
