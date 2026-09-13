@@ -5,14 +5,15 @@ routes recognized payloads into the asynchronous InfluxDB writer.
 """
 
 import json
+import logging
 import threading
 import time
 from collections import deque
 from typing import Any, Deque, Dict, Optional
-from .utils.time_utils import now_iso
 
 import paho.mqtt.client as mqtt
 
+from .utils.time_utils import now_iso
 from .config import (
     MQTT_HOST,
     MQTT_PORT,
@@ -28,6 +29,7 @@ from .influx import (
     write_imu_raw_to_influx,
 )
 
+logger = logging.getLogger(__name__)
 
 # Recent events are stored for `/events?source=memory` so diagnostics still work
 # when InfluxDB is disabled or temporarily unavailable.
@@ -53,10 +55,10 @@ def normalize_event(topic: str, payload_obj: Any) -> Dict[str, Any]:
 
 def on_connect(client, userdata, flags, rc, properties=None):
     """Subscribe to every configured topic after the broker connection opens."""
-    print("[MQTT] connected rc=", rc)
+    logger.info("[MQTT] connected with result code %s", rc)
     for t in SUB_TOPICS:
         client.subscribe(t, qos=1)
-        print("[MQTT] subscribed to:", t, "with QoS 1")
+        logger.info("[MQTT] subscribed to: %s with QoS 1", t)
 
 
 def _enqueue_influx_writes(ev: Dict[str, Any], payload_obj: Any) -> None:
@@ -84,21 +86,22 @@ def _enqueue_influx_writes(ev: Dict[str, Any], payload_obj: Any) -> None:
             write_ecg_to_influx(payload_obj)
         elif required_imu_fields.issubset(payload_obj.keys()):
             write_imu_raw_to_influx(payload_obj)
-    except Exception as e:
-        print("[INFLUX] write error:", e)
+    except Exception:
+        logger.exception("[INFLUX] write error")
 
 
 def on_message(client, userdata, msg):
     """Decode an MQTT message, save it for diagnostics, and enqueue DB writes."""
     try:
-        raw = msg.payload.decode("utf-8", errors="replace")
-    except Exception as e:
-        print("[MQTT] payload decode error:", e)
+        raw = msg.payload.decode("utf-8")
+    except UnicodeDecodeError as e:
+        logger.warning("Invalid UTF-8 payload: %s", e)
         return
 
     try:
         payload_obj = json.loads(raw)
-    except Exception:
+    except json.JSONDecodeError as e:
+        logger.warning("[MQTT] JSON decode error: %s", e)
         payload_obj = {"_raw": raw, "_note": "non-json payload"}
 
     ev = normalize_event(msg.topic, payload_obj)
@@ -116,11 +119,11 @@ def mqtt_worker():
 
     while True:
         try:
-            print(f"[MQTT] connecting to {MQTT_HOST}:{MQTT_PORT} ...")
+            logger.info("[MQTT] connecting to %s:%s ...", MQTT_HOST, MQTT_PORT)
             mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
             mqtt_client.loop_forever()
         except Exception as e:
-            print("[MQTT] error, retrying in 3s:", e)
+            logger.exception("[MQTT] error, retrying in 3s: %s", e)
             time.sleep(3)
 
 
@@ -134,9 +137,10 @@ def start_mqtt_thread():
 def stop_mqtt():
     """Disconnect the MQTT client during application shutdown."""
     try:
+        logger.info("[MQTT] disconnecting...")
         mqtt_client.disconnect()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("[MQTT] error while disconnecting: %s", e)
 
 
 def get_memory_events(limit: int) -> list[dict]:
