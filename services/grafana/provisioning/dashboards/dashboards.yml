@@ -2,9 +2,9 @@ apiVersion: 1
 
 # Grafana loads dashboard JSON files from the mounted dashboards directory.
 providers:
-  - name: smart-tennis-field
+  - name: wearable-sensors
     orgId: 1
-    folder: Smart Tennis Field
+    folder: Wearable Sensors
     type: file
     disableDeletion: false
     allowUiUpdates: true

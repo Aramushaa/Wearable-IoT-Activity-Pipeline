@@ -1,7 +1,0 @@
-# Copy to release.properties after creating YOUR AdMob app and rewarded ad unit.
-# These IDs are public identifiers, not passwords. Never use someone else's IDs.
-ADMOB_APP_ID=REPLACE_WITH_YOUR_ADMOB_APP_ID
-ADMOB_REWARDED_ID=REPLACE_WITH_YOUR_REWARDED_AD_UNIT_ID
-PRIVACY_POLICY_URL=https://REPLACE_WITH_YOUR_WEBSITE/privacy.html
-# Final package ID is permanent once the first artifact is uploaded to Play.
-APPLICATION_ID=com.sleepypandagames.gatearmy
