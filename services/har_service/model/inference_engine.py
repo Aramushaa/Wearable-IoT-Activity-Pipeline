@@ -26,7 +26,7 @@ class InferenceEngine:
         top_k: int = 3,
         input_layout: str = "accel_then_gyro",
         temporal_preprocess: str = "none",
-        score_aggregation: str = "sum",
+        score_aggregation: str = "original",
     ):
         self.session = None
         self.model_path = model_path
@@ -137,7 +137,17 @@ class InferenceEngine:
 
     def _aggregate_scores(self, scores: np.ndarray) -> np.ndarray:
         """Reduce sequence-level model scores to one score per activity class."""
-        if self.score_aggregation == "sum":
+        if self.score_aggregation == "original":
+            # Exact compatibility with the supplied reference. For this model's
+            # [time, batch, class] output, this uses only the first time step.
+            # Keep full-sequence aggregation available explicitly as "sum".
+            if scores.ndim == 1:
+                return scores
+            if scores.ndim == 2:
+                return scores[0] if scores.shape[0] == 1 else np.sum(scores, axis=0)
+            if scores.ndim == 3:
+                return np.sum(scores[0], axis=0)
+        elif self.score_aggregation == "sum":
             if scores.ndim == 3:
                 return np.sum(scores, axis=(0, 1))
             if scores.ndim == 2:

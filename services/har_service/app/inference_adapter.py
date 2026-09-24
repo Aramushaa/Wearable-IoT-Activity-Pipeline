@@ -71,7 +71,7 @@ class HarInferenceAdapter:
         top_k: int = 3,
         input_layout: str = "accel_then_gyro",
         temporal_preprocess: str = "none",
-        score_aggregation: str = "sum",
+        score_aggregation: str = "original",
     ) -> None:
         self.last_prediction: str | None = None
         self.activity_labels = load_activity_labels(labels_path)

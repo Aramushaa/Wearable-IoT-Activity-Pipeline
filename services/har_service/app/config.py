@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     input_mode: str = "db_polling"
     poll_interval_seconds: float = 5.0
 
+    # Opt-in: inferred dataset mapping, validated with a labeled watch trial.
+    live_watch_preprocessing: bool = False
+
     mqtt_host: str = "emqx"
     mqtt_port: int = 1883
     mqtt_topic: str = "tennis/watch/clean"
@@ -28,11 +31,13 @@ class Settings(BaseSettings):
     labels_path: str = "/app/model/labels.txt"
 
     model_name: str = "L2MU_plain_leaky"
-    input_layout: str = "gyro_then_accel"
-    score_aggregation: str = "sum"
+    input_layout: str = "accel_then_gyro"
+    score_aggregation: str = "original"
 
     window_size: int = 40
     window_stride: int = 20
+    live_window_stride: int = 1
+    live_persistence_interval_seconds: float = 1.0
     max_windows_per_stream: int = 10
     query_limit: int = 5000
     prediction_top_k: int = 3

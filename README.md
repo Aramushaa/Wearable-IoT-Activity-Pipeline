@@ -202,6 +202,30 @@ The system is ready when all containers report `healthy` status.
 
 ## Run Live Watch + HAR
 
+The validated live-watch configuration uses `HAR_INPUT_LAYOUT=accel_then_gyro`,
+`HAR_SCORE_AGGREGATION=sum`, `HAR_TEMPORAL_PREPROCESS=none`, and
+`HAR_LIVE_WATCH_PREPROCESSING=true`. The preprocessor converts acceleration to
+m/s², angular velocity to rad/s, interpolates to 20 Hz, and aligns a left-wrist
+board with model coordinates as `X=-Y, Y=X, Z=Z`. The mapping was selected from
+all 24 proper rotations using labeled typing and writing trials. Stored raw watch
+rows remain unchanged. Configuration changes require recreating `har-service`.
+
+The supplied original inference engine's `[40, 1, 7]` handling uses only the
+first time step. Some captured windows have all-zero scores at that step, so the
+live configuration aggregates the full 40-step output with `sum`.
+
+For low latency, live inference uses `HAR_LIVE_WINDOW_STRIDE=1`: after the
+initial 40-sample window, every new 20 Hz sample produces an MQTT prediction.
+The Current Activity and Current Confidence Grafana panels subscribe directly
+to `tennis/watch/predictions`. Historical predictions are written to InfluxDB
+asynchronously at `HAR_LIVE_PERSISTENCE_INTERVAL_SECONDS=1.0`.
+
+Run preprocessing regression tests from the repository root:
+
+```bash
+PYTHONPATH=services/har_service python3 -m unittest discover -s services/har_service/tests -v
+```
+
 Start backend services:
 
 ```bash

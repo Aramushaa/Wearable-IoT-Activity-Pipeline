@@ -6,6 +6,7 @@ import json
 import logging
 import time
 from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +15,7 @@ import paho.mqtt.client as mqtt
 from .config import settings
 from .mqtt_publisher import PredictionPublisher
 from .windowing import window_to_model_input
+from .live_preprocessing import WatchPreprocessor
 from .writer import write_prediction_point
 
 logger = logging.getLogger(__name__)
@@ -36,8 +38,15 @@ class LiveHarMqttService:
     def __init__(self, inference) -> None:
         """Create the MQTT subscriber and prediction publisher."""
         self.inference = inference
+        self.watch_preprocessors = {}
         self.buffers: dict[tuple[str, str], deque[dict[str, Any]]] = {}
         self.prediction_publisher = PredictionPublisher()
+        self.prediction_write_executor = ThreadPoolExecutor(
+            max_workers=1,
+            thread_name_prefix="har-influx-writer",
+        )
+        self.prediction_write_future: Future | None = None
+        self.last_prediction_write_monotonic = float("-inf")
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="har-service-live")
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
@@ -94,6 +103,18 @@ class LiveHarMqttService:
     def add_row(self, row: dict[str, Any]) -> None:
         """Add one row to a per-stream buffer and infer when a window is ready."""
         key = (row["device"], row["recording_id"])
+        if row.get("source") == "metawear" and settings.live_watch_preprocessing:
+            processor = self.watch_preprocessors.setdefault(key, WatchPreprocessor())
+            rows, reset = processor.push(row)
+            if reset:
+                self.buffers.pop(key, None)
+            for prepared in rows:
+                self._add_prepared_row(key, prepared)
+        else:
+            self._add_prepared_row(key, row)
+
+    def _add_prepared_row(self, key, row):
+        """Window rows only after live sensor conversion and resampling."""
         buffer = self.buffers.setdefault(key, deque())
         buffer.append(row)
 
@@ -104,7 +125,7 @@ class LiveHarMqttService:
         self.evaluate_window(window)
 
         # Apply stride by removing N rows after prediction.
-        remove_count = min(settings.window_stride, len(buffer))
+        remove_count = min(settings.live_window_stride, len(buffer))
         for _ in range(remove_count):
             buffer.popleft()
 
@@ -122,14 +143,6 @@ class LiveHarMqttService:
         prediction = prediction_details["predicted_label"]
         confidence = float(prediction_details["confidence"])
 
-        write_prediction_point(
-            device=metadata["device"],
-            recording_id=metadata["recording_id"],
-            prediction=prediction,
-            confidence=confidence,
-            metadata=metadata,
-        )
-
         live_payload = {
             "source": "har-service",
             "device": metadata["device"],
@@ -142,20 +155,64 @@ class LiveHarMqttService:
             "window_start_dataset_ts": metadata["start_dataset_ts"],
             "window_end_dataset_ts": metadata["end_dataset_ts"],
             "window_size": metadata["window_size"],
-            "window_stride": settings.window_stride,
+            "window_stride": settings.live_window_stride,
             "ts": metadata["prediction_ts"],
         }
-        self.prediction_publisher.publish(live_payload)
-
-        logger.info(
-            "Live prediction | device=%s | recording_id=%s | predicted=%s | confidence=%.2f | start_ts=%s | end_ts=%s",
-            metadata["device"],
-            metadata["recording_id"],
-            prediction,
-            confidence,
-            metadata["start_dataset_ts"],
-            metadata["end_dataset_ts"],
+        live_payload["preprocessing"] = (
+            "metawear_siddha_20hz" if settings.live_watch_preprocessing
+            and window[0].get("source") == "metawear" else "none"
         )
+        self.prediction_publisher.publish(live_payload)
+        persisted = self._persist_prediction_async(
+            device=metadata["device"],
+            recording_id=metadata["recording_id"],
+            prediction=prediction,
+            confidence=confidence,
+            metadata=metadata,
+        )
+
+        if persisted:
+            logger.info(
+                "Live prediction | device=%s | recording_id=%s | predicted=%s | confidence=%.2f | start_ts=%s | end_ts=%s",
+                metadata["device"],
+                metadata["recording_id"],
+                prediction,
+                confidence,
+                metadata["start_dataset_ts"],
+                metadata["end_dataset_ts"],
+            )
+
+    def _persist_prediction_async(self, **prediction) -> bool:
+        """Persist at a limited rate without blocking the MQTT callback."""
+        if not hasattr(self, "prediction_write_executor"):
+            self.prediction_write_executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix="har-influx-writer",
+            )
+            self.prediction_write_future = None
+            self.last_prediction_write_monotonic = float("-inf")
+
+        now = time.monotonic()
+        if self.prediction_write_future is not None and not self.prediction_write_future.done():
+            return False
+        if now - self.last_prediction_write_monotonic < settings.live_persistence_interval_seconds:
+            return False
+
+        self.last_prediction_write_monotonic = now
+        self.prediction_write_future = self.prediction_write_executor.submit(
+            write_prediction_point,
+            **prediction,
+        )
+        self.prediction_write_future.add_done_callback(self._log_prediction_write_error)
+        return True
+
+    @staticmethod
+    def _log_prediction_write_error(future: Future) -> None:
+        """Surface background storage failures without stopping live MQTT."""
+        try:
+            future.result()
+        except Exception:
+            logger.exception("Background Influx prediction write failed")
 
     def run(self) -> None:
         """Run the live MQTT service forever, reconnecting after failures."""
